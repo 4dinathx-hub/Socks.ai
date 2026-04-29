@@ -1,0 +1,6 @@
+{
+  "name": "Socks",
+  "description": "Super AI assistant with voice, image generation, and world knowledge capabilities.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": []
+}
