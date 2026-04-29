@@ -27,6 +27,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isGuestMode, setIsGuestMode] = useState(false);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -63,10 +64,10 @@ export default function App() {
       setSession(session);
       setUser(session?.user || null);
       if (session?.user?.user_metadata?.preferences) {
-        setAiPreferences({
-           ...aiPreferences,
+        setAiPreferences(prev => ({
+           ...prev,
            ...session.user.user_metadata.preferences
-        });
+        }));
       }
       setIsAuthChecking(false);
     });
@@ -77,10 +78,10 @@ export default function App() {
       setSession(session);
       setUser(session?.user || null);
       if (session?.user?.user_metadata?.preferences) {
-        setAiPreferences({
-           ...aiPreferences,
+        setAiPreferences(prev => ({
+           ...prev,
            ...session.user.user_metadata.preferences
-        });
+        }));
       }
     });
 
@@ -88,7 +89,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user && messages.length === 0) {
+    if (isGuestMode) {
+      const guestPrefs = localStorage.getItem('socks_guest_preferences');
+      if (guestPrefs) {
+         setAiPreferences(prev => ({...prev, ...JSON.parse(guestPrefs)}));
+      }
+    }
+  }, [isGuestMode]);
+
+  useEffect(() => {
+    if ((user || isGuestMode) && messages.length === 0) {
        setMessages([{
         id: '1',
         role: 'assistant',
@@ -96,7 +106,7 @@ export default function App() {
         type: 'text'
       }]);
     }
-  }, [user, aiPreferences.ai_name, aiPreferences.user_name, messages.length]);
+  }, [user, isGuestMode, aiPreferences.ai_name, aiPreferences.user_name, messages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -364,6 +374,10 @@ To build the .apk file from this codebase for your Android device, please follow
   };
 
   const handleSignOut = async () => {
+    if (isGuestMode) {
+      setIsGuestMode(false);
+      return;
+    }
     await supabase.auth.signOut();
   };
 
@@ -371,16 +385,18 @@ To build the .apk file from this codebase for your Android device, please follow
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-8 h-8 border-4 border-gray-200 border-t-black rounded-full animate-spin"></div></div>;
   }
 
-  if (!session) {
-    return <Auth onAuthSuccess={() => {}} />;
+  if (!session && !isGuestMode) {
+    return <Auth onAuthSuccess={() => setIsGuestMode(true)} />;
   }
+
+  const effectiveUserEmail = user?.email || 'guest@world.net';
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
       <AnimatePresence>
-        {showPreferences && user && (
+        {showPreferences && (
            <PreferencesModal 
-             user={user} 
+             user={user || { id: 'guest', email: 'guest@world.net' } as any} 
              onClose={() => setShowPreferences(false)} 
              onPreferencesUpdated={(prefs) => setAiPreferences({...aiPreferences, ...prefs})} 
            />
@@ -420,13 +436,13 @@ To build the .apk file from this codebase for your Android device, please follow
           </div>
 
           <div className="mt-auto space-y-2 border-t border-gray-100 pt-4">
-            <div className="flex items-center gap-3 px-2 py-3 mb-2">
+             <div className="flex items-center gap-3 px-2 py-3 mb-2">
                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
                   <UserIcon size={16} />
                </div>
                <div className="flex flex-col overflow-hidden">
                  <span className="text-sm font-semibold truncate">{aiPreferences.user_name || 'User'}</span>
-                 <span className="text-xs text-gray-500 truncate">{user.email}</span>
+                 <span className="text-xs text-gray-500 truncate">{effectiveUserEmail}</span>
                </div>
             </div>
 

@@ -156,14 +156,24 @@ export default function Auth({ onAuthSuccess }: { onAuthSuccess: () => void }) {
           </div>
         </div>
 
-        <div className="mt-8 text-center text-sm text-gray-500">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
+        <div className="mt-8 text-center text-sm text-gray-500 flex flex-col gap-4">
+          <div>
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <button 
+              type="button" 
+              onClick={() => setIsLogin(!isLogin)}
+              className="font-bold text-black hover:underline"
+            >
+              {isLogin ? 'Sign Up' : 'Sign In'}
+            </button>
+          </div>
+          
           <button 
             type="button" 
-            onClick={() => setIsLogin(!isLogin)}
-            className="font-bold text-black hover:underline"
+            onClick={() => onAuthSuccess()}
+            className="text-gray-400 hover:text-black hover:underline transition-colors block w-full"
           >
-            {isLogin ? 'Sign Up' : 'Sign In'}
+            Skip and continue as Guest
           </button>
         </div>
       </motion.div>

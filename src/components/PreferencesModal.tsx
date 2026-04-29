@@ -22,7 +22,10 @@ export default function PreferencesModal({
   });
 
   useEffect(() => {
-    if (user?.user_metadata?.preferences) {
+    if (user?.id === 'guest') {
+       const guestPrefs = localStorage.getItem('socks_guest_preferences');
+       if (guestPrefs) setPreferences(JSON.parse(guestPrefs));
+    } else if (user?.user_metadata?.preferences) {
       setPreferences(prev => ({
         ...prev,
         ...user.user_metadata.preferences
@@ -33,6 +36,13 @@ export default function PreferencesModal({
   const handleSave = async () => {
     setLoading(true);
     try {
+      if (user?.id === 'guest') {
+        localStorage.setItem('socks_guest_preferences', JSON.stringify(preferences));
+        onPreferencesUpdated(preferences);
+        onClose();
+        return;
+      }
+      
       const { data, error } = await supabase.auth.updateUser({
         data: { preferences }
       });
