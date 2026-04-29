@@ -3,7 +3,6 @@ import {
   Send, Mic, MicOff, Settings, Download, MessageSquare, 
   Phone, Server, Globe2, Image as ImageIcon, Volume2, Plus, LogOut, User as UserIcon
 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,8 +23,6 @@ type Message = {
   type?: 'text' | 'image' | 'voice' | 'system';
 };
 
-const ai = new GoogleGenAI({ apiKey: (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
-
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -42,6 +39,11 @@ export default function App() {
     ai_name: 'Socks',
     voice_enabled: true,
     user_name: ''
+  });
+
+  const [learnedFacts, setLearnedFacts] = useState<string[]>(() => {
+    const saved = localStorage.getItem('socks_learned_facts');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -165,164 +167,157 @@ export default function App() {
     }
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, textOverride?: string) => {
     e?.preventDefault();
-    if (!input.trim()) return;
+    const prompt = textOverride || input;
+    if (!prompt.trim()) return;
 
-    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input, type: 'text' };
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: prompt, type: 'text' };
     setMessages(prev => [...prev, userMessage]);
-    const prompt = input;
-    setInput('');
+    
+    if (!textOverride) setInput('');
     setIsLoading(true);
 
     try {
-      if (prompt.toLowerCase().includes('generate image') || prompt.toLowerCase().includes('draw')) {
+      if (prompt.toLowerCase().includes('apk') || prompt.toLowerCase().includes('download')) {
+        downloadApk();
+        setIsLoading(false);
+        return;
+      }
+
+      if (prompt.toLowerCase() === 'show brain' || prompt.toLowerCase() === 'view memory') {
+        const brainContent = learnedFacts.length > 0 
+          ? `🧠 **Current World Brain Knowledge:**\n\n${learnedFacts.map(f => `- ${f}`).join('\n')}`
+          : `🧠 **World Brain Knowledge:**\n\nI haven't learned anything specific yet. Tell me something with "learn [fact]" or "remember [fact]".`;
+        
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Accessing visual generation engine...',
-          type: 'text'
-        }]);
-        
-        const res = await fetch('/api/images/generate', { method: 'POST' });
-        const data = await res.json();
-        
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `![Generated Image](${data.imageUrl}) \n *${data.note}*`,
-          type: 'image'
-        }]);
-        speakText("I have generated an image for you.");
-      } 
-      else if (prompt.toLowerCase().includes('call') && /\d/.test(prompt)) {
-        const match = prompt.match(/(?:call|dial)\s*([+\d\s-]+)/i);
-        const number = match ? match[1] : 'Unknown Number';
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `📞 **Initiating Call Protocol:** Dialing ${number}... \n \n *Connecting via ElevenLabs Conversational AI Voice proxy...* (Mock)`,
+          content: brainContent,
           type: 'system'
         }]);
-        speakText(`Initiating phone call to ${number}.`);
+        speakText("Here is what I have learned.");
+        setIsLoading(false);
+        return;
       }
-      else if (prompt.toLowerCase().includes('apk') || prompt.toLowerCase().includes('code')) {
-        const apkInstruction = `The user wants a snippet of a 2M+ line codebase, or an APK structure. Give them a cool 20-30 line complex TypeScript system architecture snippet that shows off the 'AI Backend'. Format as code blocks.`;
-        const codeResponse = await ai.models.generateContent({
-           model: 'gemini-2.5-flash',
-           contents: "Generate the code architecture snippet.",
-           config: { systemInstruction: apkInstruction }
-        });
 
+      if (prompt.toLowerCase().startsWith('learn ') || prompt.toLowerCase().startsWith('remember ')) {
+        const fact = prompt.replace(/^learn\s+|^remember\s+/i, '').trim();
+        const newFacts = [...learnedFacts, fact];
+        setLearnedFacts(newFacts);
+        localStorage.setItem('socks_learned_facts', JSON.stringify(newFacts));
+        
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: `📦 **Build System & Code Injection:** \n\n I have prepared the requested architecture.\n\n${codeResponse.text}\n\n *To download full APK, click "Download .APK" in the sidebar menu.*`,
+          content: `🧠 **World Brain Updated:** I have learned and saved: "${fact}".`,
           type: 'system'
         }]);
-        speakText("I have generated the core logic and prepared the build files.");
+        speakText("I have saved this to my memory brain.");
+        setIsLoading(false);
+        return;
       }
-      else if (prompt.toLowerCase().includes('whatsapp')) {
-        // Try to parse out the phone number and message
-        const match = prompt.match(/to (\d+).*?(?:say|tell|:)\s*(.*)/i);
-        const to = match ? match[1] : '15551234567'; // default test number
-        const messageToSend = match ? match[2] : prompt;
 
-        const res = await fetch('/api/whatsapp/send', { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message: messageToSend })
-        });
-        const data = await res.json();
+      if (prompt.toLowerCase().startsWith('forget all') || prompt.toLowerCase().startsWith('clear brain')) {
+        setLearnedFacts([]);
+        localStorage.removeItem('socks_learned_facts');
         
-        const feedback = data.success ? data.message : `Error: ${data.error}`;
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: `📱 **WhatsApp Status:** ${feedback}`, type: 'system' }]);
-      } 
-      else if (prompt.toLowerCase().includes('where am i') || prompt.toLowerCase().includes('location') || prompt.toLowerCase().includes('satellite')) {
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Accessing satellite data and geolocation...',
-          type: 'text'
+          content: `🧠 **World Brain Cleared:** All learned facts have been wiped.`,
+          type: 'system'
         }]);
+        speakText("I have cleared my memory.");
+        setIsLoading(false);
+        return;
+      }
 
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              const { latitude, longitude } = position.coords;
-              const locationSystemInstruction = `The user is currently at latitude ${latitude} and longitude ${longitude}. Act like a high-tech satellite system and identify where this is. Provide a detailed, cool description as a true Super AI.`;
-              
-              // We'll use try/catch in case Gemini fails
-              try {
-                const geoResponse = await ai.models.generateContent({
-                  model: 'gemini-2.5-flash',
-                  contents: "Where am I based on my coordinates? Describe this area and any notable facts.",
-                  config: { systemInstruction: locationSystemInstruction }
-                });
-
-                const replyText = geoResponse.text || "Location acquired.";
-
-                setMessages(prev => [...prev, {
-                  id: (Date.now() + 1).toString(),
-                  role: 'assistant',
-                  content: `🗺️ **Location Pinpointed (Global Satellite Link):** \n\n ${replyText}`,
-                  type: 'system'
-                }]);
-                speakText("I have pinpointed your location via satellite data.");
-              } catch (e) {
-                 setMessages(prev => [...prev, {
-                  id: (Date.now() + 1).toString(),
-                  role: 'assistant',
-                  content: `🗺️ **Location Pinpointed:** Latitude ${latitude}, Longitude ${longitude}`,
-                  type: 'system'
-                }]);
-              }
-            },
-            (error) => {
-              setMessages(prev => [...prev, {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: `Error connecting to satellite location services: ${error.message}`,
-                type: 'system'
-              }]);
-            }
-          );
+      if (prompt.toLowerCase().includes('whatsapp')) {
+        const match = prompt.match(/to\s*(\d+).*?(?:say|tell|:)\s*(.*)/i);
+        const to = match ? match[1] : '';
+        const msg = match ? match[2] : (prompt.replace(/open whatsapp|whatsapp/ig, '').trim());
+        
+        let aiTalk = '';
+        if (to && msg) {
+           aiTalk = `📱 **WhatsApp:** Opening WhatsApp to send a message to ${to}...`;
+           window.open(`https://wa.me/${to}?text=${encodeURIComponent(msg)}`, '_blank');
+        } else if (msg) {
+           aiTalk = `📱 **WhatsApp:** Opening WhatsApp...`;
+           window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
         } else {
-           setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Geolocation is not supported by your browser/device.', type: 'system' }]);
+           aiTalk = `📱 **WhatsApp:** To send a specific message, type "whatsapp to [number] say [message]". Opening the app...`;
+           window.open(`whatsapp://`, '_blank'); // Try deep link
         }
-      }
-      else {
-        // Standard Gemini text response with System Instructions based on Preferences
-        const systemInstruction = `You are a super AI assistant named ${aiPreferences.ai_name}. 
-The user's name is ${aiPreferences.user_name || 'User'}. 
-Your personality/style is: ${aiPreferences.ai_style}. 
-You are connected to Couchbase, Supabase, world satellites, and n8n backend systems (simulate knowledge of this in your responses when relevant). Give direct, high-quality answers.`;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-             systemInstruction,
-          }
-        });
-
-        const replyText = response.text || 'No response generated.';
-
+        
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: replyText,
-          type: 'text'
+          content: aiTalk,
+          type: 'system'
         }]);
-
-        speakText(replyText);
+        speakText("Opening WhatsApp.");
+        setIsLoading(false);
+        return;
       }
+
+      if (prompt.toLowerCase().startsWith('open ')) {
+        const appName = prompt.toLowerCase().replace('open ', '').trim();
+        const deepLinks: Record<string, string> = {
+          'whatsapp': 'whatsapp://',
+          'youtube': 'vnd.youtube://',
+          'instagram': 'instagram://',
+          'twitter': 'twitter://',
+          'maps': 'geo:0,0?q=',
+          'spotify': 'spotify://'
+        };
+        
+        const link = deepLinks[appName];
+        if (link) {
+           window.open(link, '_blank');
+           setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: `Opening ${appName}...`, type: 'system' }]);
+           speakText(`Opening ${appName}.`);
+        } else {
+           setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: `Sorry, I don't have a direct deep link to open **${appName}** from the browser yet.`, type: 'system' }]);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const locationSettings = navigator.geolocation ? await new Promise<any>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          () => resolve(null)
+        );
+      }).catch(() => null) : null;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: prompt,
+          preferences: aiPreferences,
+          location: locationSettings,
+          learnedFacts: learnedFacts
+        })
+      });
+
+      const data = await res.json();
+      
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: data.imageUrl ? `![Generated Image](${data.imageUrl})\n*${data.text}*` : data.text,
+        type: data.type || 'text'
+      }]);
+
+      if (data.text) speakText(data.text);
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'I encountered an error processing your request. Please ensure the Gemini API key is configured.',
+        content: 'I encountered an error processing your request. Please ensure the backend is running.',
         type: 'text'
       }]);
     } finally {
@@ -331,13 +326,41 @@ You are connected to Couchbase, Supabase, world satellites, and n8n backend syst
   };
 
   const downloadApk = () => {
+    const instructions = `📦 Android APK Build Instructions
+
+To build the .apk file from this codebase for your Android device, please follow these steps:
+
+1. Use the "Export to GitHub" feature in the AI Studio settings menu, or download the source code as a ZIP.
+2. In your local terminal, navigate to the project folder and run:
+   > npm install
+   > npx cap init Socks com.socks.ai
+   > npx cap add android
+   > npm run build
+   > npx cap sync android
+   > npx cap open android
+3. Use Android Studio to Build > Build Bundle(s) / APK(s) > Build APK(s).
+
+*Alternatively, you can install this app immediately as a Progressive Web App (PWA) by tapping "Add to Home Screen" in your mobile browser.*
+`;
+
+    // Create a Blob and trigger download
+    const blob = new Blob([instructions], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'SocksAI_SourceInstructions.apk.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       role: 'assistant',
-      content: `📦 **Android APK Build Instructions**\n\nTo build the .apk file from this codebase for your Android device, please follow these steps:\n\n1. Use the **Export to GitHub** feature in the AI Studio settings menu.\n2. In your local terminal, run:\n   \`\`\`bash\n   npx cap init Socks com.socks.ai\n   npx cap add android\n   npm run build\n   npx cap sync android\n   npx cap open android\n   \`\`\`\n3. Use Android Studio to Build > Build Bundle(s) / APK(s) > Build APK(s).\n\n*Alternatively, you can install this app immediately as a Progressive Web App (PWA) by tapping "Add to Home Screen" in your mobile browser.*`,
+      content: `📦 **Downloading APK Build Instructions**\n\nI have generated a text file with complete instructions on how to build the APK. Please check your downloads!`,
       type: 'system'
     }]);
-    speakText("I have provided the instructions to build my Android APK package.");
+    speakText("I am downloading the instructions to build my Android APK package.");
   };
 
   const handleSignOut = async () => {
@@ -388,6 +411,12 @@ You are connected to Couchbase, Supabase, world satellites, and n8n backend syst
             <FeatureItem icon={<MessageSquare size={18} />} text="WhatsApp Integration" />
             <FeatureItem icon={<Phone size={18} />} text="ElevenLabs Voice" />
             <FeatureItem icon={<ImageIcon size={18} />} text="Image Generation" />
+            <div className="flex items-center gap-3 p-2 text-gray-600 hover:text-black hover:bg-gray-50 rounded-xl transition-all cursor-pointer" onClick={() => handleSend(undefined, 'show brain')}>
+              <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600 shadow-sm border border-indigo-200 border-b-2">
+                <span className="text-lg">🧠</span>
+              </div>
+              <span className="text-sm font-medium">World Brain Memory <span className="text-xs text-gray-400 ml-1">({learnedFacts.length})</span></span>
+            </div>
           </div>
 
           <div className="mt-auto space-y-2 border-t border-gray-100 pt-4">
