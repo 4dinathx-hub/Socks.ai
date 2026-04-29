@@ -176,11 +176,11 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      if (prompt.toLowerCase().includes('generate image')) {
+      if (prompt.toLowerCase().includes('generate image') || prompt.toLowerCase().includes('draw')) {
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Generating your image...',
+          content: 'Accessing visual generation engine...',
           type: 'text'
         }]);
         
@@ -193,7 +193,35 @@ export default function App() {
           content: `![Generated Image](${data.imageUrl}) \n *${data.note}*`,
           type: 'image'
         }]);
+        speakText("I have generated an image for you.");
       } 
+      else if (prompt.toLowerCase().includes('call') && /\d/.test(prompt)) {
+        const match = prompt.match(/(?:call|dial)\s*([+\d\s-]+)/i);
+        const number = match ? match[1] : 'Unknown Number';
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `📞 **Initiating Call Protocol:** Dialing ${number}... \n \n *Connecting via ElevenLabs Conversational AI Voice proxy...* (Mock)`,
+          type: 'system'
+        }]);
+        speakText(`Initiating phone call to ${number}.`);
+      }
+      else if (prompt.toLowerCase().includes('apk') || prompt.toLowerCase().includes('code')) {
+        const apkInstruction = `The user wants a snippet of a 2M+ line codebase, or an APK structure. Give them a cool 20-30 line complex TypeScript system architecture snippet that shows off the 'AI Backend'. Format as code blocks.`;
+        const codeResponse = await ai.models.generateContent({
+           model: 'gemini-2.5-flash',
+           contents: "Generate the code architecture snippet.",
+           config: { systemInstruction: apkInstruction }
+        });
+
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `📦 **Build System & Code Injection:** \n\n I have prepared the requested architecture.\n\n${codeResponse.text}\n\n *To download full APK, click "Download .APK" in the sidebar menu.*`,
+          type: 'system'
+        }]);
+        speakText("I have generated the core logic and prepared the build files.");
+      }
       else if (prompt.toLowerCase().includes('whatsapp')) {
         // Try to parse out the phone number and message
         const match = prompt.match(/to (\d+).*?(?:say|tell|:)\s*(.*)/i);
@@ -209,6 +237,59 @@ export default function App() {
         
         const feedback = data.success ? data.message : `Error: ${data.error}`;
         setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: `📱 **WhatsApp Status:** ${feedback}`, type: 'system' }]);
+      } 
+      else if (prompt.toLowerCase().includes('where am i') || prompt.toLowerCase().includes('location') || prompt.toLowerCase().includes('satellite')) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Accessing satellite data and geolocation...',
+          type: 'text'
+        }]);
+
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const { latitude, longitude } = position.coords;
+              const locationSystemInstruction = `The user is currently at latitude ${latitude} and longitude ${longitude}. Act like a high-tech satellite system and identify where this is. Provide a detailed, cool description as a true Super AI.`;
+              
+              // We'll use try/catch in case Gemini fails
+              try {
+                const geoResponse = await ai.models.generateContent({
+                  model: 'gemini-2.5-flash',
+                  contents: "Where am I based on my coordinates? Describe this area and any notable facts.",
+                  config: { systemInstruction: locationSystemInstruction }
+                });
+
+                const replyText = geoResponse.text || "Location acquired.";
+
+                setMessages(prev => [...prev, {
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: `🗺️ **Location Pinpointed (Global Satellite Link):** \n\n ${replyText}`,
+                  type: 'system'
+                }]);
+                speakText("I have pinpointed your location via satellite data.");
+              } catch (e) {
+                 setMessages(prev => [...prev, {
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: `🗺️ **Location Pinpointed:** Latitude ${latitude}, Longitude ${longitude}`,
+                  type: 'system'
+                }]);
+              }
+            },
+            (error) => {
+              setMessages(prev => [...prev, {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: `Error connecting to satellite location services: ${error.message}`,
+                type: 'system'
+              }]);
+            }
+          );
+        } else {
+           setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Geolocation is not supported by your browser/device.', type: 'system' }]);
+        }
       }
       else {
         // Standard Gemini text response with System Instructions based on Preferences
@@ -250,7 +331,13 @@ You are connected to Couchbase, Supabase, world satellites, and n8n backend syst
   };
 
   const downloadApk = () => {
-    alert("This would trigger a cloud build to package the PWA into a downloadable .apk file. For now, you can 'Add to Home Screen' to install Shorts as a PWA.");
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `📦 **Android APK Build Instructions**\n\nTo build the .apk file from this codebase for your Android device, please follow these steps:\n\n1. Use the **Export to GitHub** feature in the AI Studio settings menu.\n2. In your local terminal, run:\n   \`\`\`bash\n   npx cap init Socks com.socks.ai\n   npx cap add android\n   npm run build\n   npx cap sync android\n   npx cap open android\n   \`\`\`\n3. Use Android Studio to Build > Build Bundle(s) / APK(s) > Build APK(s).\n\n*Alternatively, you can install this app immediately as a Progressive Web App (PWA) by tapping "Add to Home Screen" in your mobile browser.*`,
+      type: 'system'
+    }]);
+    speakText("I have provided the instructions to build my Android APK package.");
   };
 
   const handleSignOut = async () => {
